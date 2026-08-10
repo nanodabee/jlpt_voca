@@ -275,7 +275,7 @@ def extract_vocab_candidates_from_text(text: str) -> list[dict[str, str]]:
 
     # Japanese surface form may freely mix kanji / hiragana / katakana.
     jp_word = r"(?:[-－~〜～]?[一-龯々ぁ-ゖァ-ヺー・]+)"
-    kana = r"[ぁ-ゖァ-ヺー・]+"
+    kana = r"(?:[-－~〜～]?[ぁ-ゖァ-ヺー・]+)"
 
     # 1) word(reading) meaning
     p_paren_reading = re.compile(
