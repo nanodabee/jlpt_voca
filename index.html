@@ -281,19 +281,20 @@ textarea.input{min-height:170px;resize:vertical}
   <div class="top"><h1>전체 단어장</h1><span class="pill">검색 · 필터</span></div>
   <div class="panel">
     <div id="levelCountSummary" class="level-count-summary"></div>
-      <div class="tabs">
+      <div class="tabs" id="wordLevelTabs">
       <button class="tab active" onclick="setFilter('all',this)">전체</button>
-      <button class="tab" onclick="setFilter('basic',this)">N5</button>
+      <button class="tab" onclick="setFilter('N5',this)">N5</button>
+      <button class="tab" onclick="setFilter('N4',this)">N4</button>
       <button class="tab" onclick="setFilter('N3',this)">N3</button>
       <button class="tab" onclick="setFilter('N2',this)">N2</button>
       <button class="tab" onclick="setFilter('N1',this)">N1</button>
     </div>
-    <div class="level-note">N5와 N4는 사용자 화면에서 하나의 'N5' 카테고리로 묶어 표시합니다.</div>
     <div class="actions" style="margin-bottom:10px">
       <button class="btn secondary" onclick="toggleSelectAll()">전체 선택/해제</button>
       <button class="btn danger" onclick="deleteSelectedWords()">선택 삭제</button>
     </div>
     <input class="input" placeholder="🔎 단어 / 읽기 / 뜻 검색" oninput="searchWords(this.value)">
+    <div id="wordSearchStatus" class="muted" style="margin:8px 0"></div>
     <div id="wordList"></div>
   </div>
 </section>
@@ -809,7 +810,9 @@ function showPage(id,btn){
 }
 function setFilter(f,btn){
  currentFilter=f;
- document.querySelectorAll(".tab").forEach(b=>b.classList.remove("active")); btn.classList.add("active"); renderWords();
+ document.querySelectorAll("#wordLevelTabs .tab").forEach(b=>b.classList.remove("active"));
+ if(btn)btn.classList.add("active");
+ renderWords();
 }
 function visibleLevel(level){return (level==="N5"||level==="N4"||level==="basic")?"N5":level}
 
@@ -840,10 +843,20 @@ function renderLevelCounts(){
 
 function renderWords(){
  renderLevelCounts();
+ const q=(currentQuery||"").trim().toLowerCase();
  let list=words.filter(x=>{
-   let levelOK=currentFilter==="all" || x[3]===currentFilter;
-   return levelOK && x.join(" ").includes(currentQuery);
+   const level=x?.[3]||"";
+   const levelOK=currentFilter==="all" || level===currentFilter;
+   if(!levelOK)return false;
+   if(!q)return true;
+   const searchable=[x?.[0]||"",x?.[1]||"",x?.[2]||""].join(" ").toLowerCase();
+   return searchable.includes(q);
  });
+ const status=document.getElementById("wordSearchStatus");
+ if(status){
+   const label=currentFilter==="all"?"전체":currentFilter;
+   status.textContent=q?`${label}에서 검색 결과 ${list.length}개`:`${label} 단어 ${list.length}개`;
+ }
  document.getElementById("wordList").innerHTML=list.map(x=>{
    const i=words.indexOf(x);
    return `<div class="word">
