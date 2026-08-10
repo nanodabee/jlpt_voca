@@ -162,6 +162,18 @@ textarea.input{min-height:170px;resize:vertical}
 .inline-pdf-row.dup{background:#fff9df}
 .inline-pdf-row.ok{background:#f4fbf5}
 .inline-pdf-legend{display:flex;flex-wrap:wrap;gap:10px;font-size:12px;margin:8px 0}
+
+.import-workspace{display:grid;grid-template-columns:minmax(0,1.7fr) minmax(280px,.8fr);gap:14px;align-items:start;margin-top:14px}
+.import-main-panel,.import-status-panel{border:1px solid var(--line);border-radius:14px;background:#fff;padding:14px}
+.import-status-panel{position:sticky;top:12px;max-height:560px;overflow:auto}
+.status-summary{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:10px 0}
+.status-box{border:1px solid var(--line);border-radius:10px;padding:9px 10px;background:#fafafa}
+.status-list{display:flex;flex-direction:column;gap:7px;margin-top:10px}
+.status-item{border-radius:9px;padding:8px 10px;font-size:12px;border:1px solid var(--line)}
+.status-ok{background:#f2fbf4}.status-dup{background:#fff8dc}.status-bad{background:#fff1f1}
+.status-tabs{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}.status-tabs button{padding:6px 9px}
+#importWorkspace{display:none}#importWorkspace.open{display:block}
+@media(max-width:900px){.import-workspace{grid-template-columns:1fr}.import-status-panel{position:static;max-height:none}}
 </style>
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 </head>
@@ -235,97 +247,89 @@ textarea.input{min-height:170px;resize:vertical}
 <section id="input" class="hidden">
   <div class="top"><h1>단어 입력</h1>
       <div class="file-import-card" id="directTextImportCard">
-        <h2>텍스트 직접 입력</h2>
-        <p class="muted">PDF나 이미지 파일 없이도 긴 단어 목록을 붙여넣어 분석할 수 있습니다.</p>
+        <h2>가져오기</h2>
+        <p class="muted">텍스트, PDF, CSV, 이미지에서 단어를 가져올 수 있습니다.</p>
         <div class="actions">
-          <button type="button" class="btn primary" onclick="openBulkPaste()">텍스트 직접 입력</button>
+          <button type="button" class="btn primary" onclick="openImportWorkspace('text')">텍스트 직접 입력</button>
+          <label class="btn secondary" style="display:inline-block;cursor:pointer">PDF 파일 선택
+            <input id="pdfImportFileUnified" type="file" accept=".pdf,application/pdf" style="display:none" onchange="openImportFileFromUnified('pdf',event)">
+          </label>
+          <label class="btn secondary" style="display:inline-block;cursor:pointer">CSV 파일 선택
+            <input id="csvImportFileUnified" type="file" accept=".csv,text/csv" style="display:none" onchange="openImportFileFromUnified('csv',event)">
+          </label>
+          <label class="btn secondary" style="display:inline-block;cursor:pointer">이미지 파일 선택
+            <input id="imageImportFileUnified" type="file" accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp" style="display:none" onchange="openImportImageFromUnified(event)">
+          </label>
         </div>
-        <div id="bulkPastePanel" style="display:none;margin:12px 0;padding:16px;border:1px solid var(--line);border-radius:12px;background:#fff">
-          <h3 style="margin-top:0">텍스트 직접 입력</h3>
-          <p class="muted">예: 経験 けいけん 경험, 체험 / ホテル 호텔</p>
-          <textarea id="bulkPasteInput" class="input" style="min-height:220px;resize:vertical" placeholder="여기에 수십~수백 줄을 그대로 붙여넣으세요."></textarea>
+      </div>
+
+      <div id="importWorkspace" class="file-import-card">
+        <div class="actions" style="justify-content:space-between">
+          <div>
+            <h2 style="margin:0">가져오기 작업창</h2>
+            <div class="muted" id="importWorkspaceSource">텍스트 직접 입력</div>
+          </div>
+          <button class="btn secondary" onclick="closeImportWorkspace()">닫기</button>
+        </div>
+
+        <div id="bulkPastePanel" style="margin-top:12px">
+          <textarea id="bulkPasteInput" class="input" style="min-height:220px;resize:vertical" placeholder="예)
+経験 けいけん 경험, 체험
+上げる あげる(무엇을) 올리다
+ホテル 호텔
+
+여기에 수십~수백 줄을 붙여넣을 수 있습니다."></textarea>
           <div class="actions" style="margin-top:8px">
-            <button class="btn primary" onclick="applyBulkPaste()">텍스트 분석 편집기에 넣기</button>
-            <button class="btn secondary" onclick="appendBulkPaste()">기존 편집 내용 뒤에 추가</button>
-            <button class="btn secondary" onclick="closeBulkPaste()">닫기</button>
+            <button class="btn primary" onclick="applyBulkPaste()">분석 편집기에 넣기</button>
+            <button class="btn secondary" onclick="appendBulkPaste()">기존 내용 뒤에 추가</button>
           </div>
         </div>
-<div class="file-import-card">
-      <h2>CSV / PDF / 이미지로 가져오기</h2>
-      <p class="muted">파일을 서버에서 실제로 읽은 뒤 후보를 보여줍니다. 등록 전에 단어·요미가나·뜻·레벨을 수정할 수 있고 기존 단어는 중복 제외됩니다.</p>
-      <div class="actions">
-        <label class="btn secondary" style="display:inline-block;cursor:pointer">CSV 파일 선택
-          <input id="csvImportFile" type="file" accept=".csv,text/csv" style="display:none" onchange="uploadVocabularyFile('csv',event)">
-        </label>
-        <label class="btn secondary" style="display:inline-block;cursor:pointer">PDF 파일 선택
-          <input id="pdfImportFile" type="file" accept=".pdf,application/pdf" style="display:none" onchange="uploadVocabularyFile('pdf',event)">
-        </label><label class="btn secondary" style="display:inline-block;cursor:pointer">이미지 파일 선택
-          <input id="imageImportFile" type="file" accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp" style="display:none" onchange="importVocabularyImage(event)">
-        </label>
-      </div>
-      <div id="fileImportStatus" class="import-status">CSV 또는 PDF를 선택하거나 텍스트를 직접 붙여넣으세요.</div>
-      <div id="imageOcrProgress" class="import-status" style="display:none">
-        이미지 글자 인식 대기 중
-      </div>
-      <div id="imagePreviewWrap" style="display:none;margin-top:10px">
-        <img id="imageImportPreview" alt="OCR 이미지 미리보기" style="max-width:100%;max-height:340px;border:1px solid var(--line);border-radius:10px">
-      </div>
-      <div id="fileImportSummary" class="import-status" style="display:none"></div>
-      <div id="fileImportCandidates"></div>
-      <details id="pdfRawDetails" class="hidden" style="margin-top:12px">
-        <summary style="cursor:pointer;font-weight:700">PDF 추출 원문 편집 / 재분석</summary>
-        <p class="muted">필요 없는 줄을 지우고 등록할 단어만 남긴 뒤 다시 분석하세요. 한자 단어: 経験（けいけん） 경험 또는 経験 けいけん 경험 / 가나-only 단어: あまり 별로, 그다지 또는 ホテル 호텔</p>
-        
-        
-        <div id="pdfLineCount" class="import-status" style="margin:8px 0">현재 0줄 · 빈 줄 제외 0줄</div>
-        <div class="inline-pdf-legend">
-          <span>🟢 정상</span><span>🟡 중복</span><span>🔴 미인식</span><span>⚪ 미진단</span>
-        </div>
-        <div class="actions" style="margin-bottom:8px">
-          <button class="btn secondary" onclick="diagnosePdfText()">현재 내용 진단</button>
-          <button class="btn secondary" onclick="filterInlinePdf('all')">전체</button>
-          <button class="btn secondary" onclick="filterInlinePdf('bad')">미인식만</button>
-          <button class="btn secondary" onclick="filterInlinePdf('dup')">중복만</button>
-        </div>
-        <div id="inlinePdfEditor" class="inline-pdf-editor"></div>
-        <textarea id="pdfRawText" style="display:none"></textarea>
-        <div class="actions">
-          <button class="btn primary" onclick="reanalyzePdfText(false)">편집한 원문 재분석</button>
-          <button class="btn secondary" onclick="reanalyzePdfText(true)">기존 후보에 추가</button>
-          <button class="btn secondary" onclick="clearPdfRawText()">원문 비우기</button>
-        </div>
-        <div id="pdfReanalyzeStatus" class="muted" style="margin-top:8px"></div>
-        <div class="import-status" style="margin-top:10px">
-          <b>입력 형식 안내</b><br>
-          한자 포함: <code>経験 けいけん 경험, 체험</code><br>
-          히라가나/가타카나만: <code>あまり 별로, 그다지</code> / <code>ホテル 호텔</code><br>
-          → 가나-only 단어는 요미가나를 같은 값으로 자동 입력합니다.<br>뜻 괄호 허용: <code>上げる あげる (무엇을) 올리다</code>, <code>上げる あげる(무엇을) 올리다</code>, <code>乗る のる（탈것에）타다</code> 예: ホテル 호텔 → 단어 ホテル / 요미가나 ホテル<br>
-          3줄 형식(단어 / 요미가나 / 뜻)도 계속 지원합니다.
-        </div>
-      </details>
-    </div>
 
-    <div class="youtube-box">
-      <h2>YouTube 링크로 단어 가져오기</h2>
-      <p class="muted">YouTube 링크를 넣으면 서버가 제공 가능한 자막(수동/자동 생성)을 확인해 텍스트를 가져옵니다. 영상에 자막이 없거나 접근이 제한되면 아래 수동 붙여넣기를 사용할 수 있습니다.</p>
-      <label class="muted">YouTube 영상 링크</label>
-      <div style="display:grid;grid-template-columns:1fr auto;gap:8px">
-        <input id="youtubeUrl" class="input" style="margin-top:6px" placeholder="https://www.youtube.com/watch?v=...">
-        <button id="youtubeFetchBtn" class="btn primary" style="height:42px;margin-top:6px" onclick="fetchYoutubeTranscript()">링크 불러오기</button>
-      </div>
-      <div id="youtubeVideoInfo" class="muted" style="margin:4px 0 14px"></div>
-      <div class="row">
-        <div><label class="muted">가져올 단어 분류</label>
-          <select id="youtubeLevel" class="select">
-            <option value="N5">N5</option>
-            <option value="N4">N4</option>
-            <option value="N3">N3</option>
-            <option value="N2">N2</option>
-            <option value="N1">N1</option>
-          </select>
+        <div class="import-workspace">
+          <div class="import-main-panel">
+            <div id="fileImportStatus" class="import-status">내용을 입력하거나 파일을 선택해주세요.</div>
+            <div id="imageOcrProgress" class="import-status" style="display:none"></div>
+            <div id="imagePreviewWrap" style="display:none;margin-top:10px">
+              <img id="imageImportPreview" alt="OCR 이미지 미리보기" style="max-width:100%;max-height:300px;border:1px solid var(--line);border-radius:10px">
+            </div>
+
+            <div id="pdfLineCount" class="import-status" style="margin:8px 0">현재 0줄 · 빈 줄 제외 0줄</div>
+            <div class="actions" style="margin-bottom:8px">
+              <button class="btn secondary" onclick="diagnosePdfText()">상태 분석</button>
+              <button class="btn primary" onclick="reanalyzePdfText(false)">후보 만들기 / 다시 분석</button>
+              <button class="btn secondary" onclick="reanalyzePdfText(true)">기존 후보에 추가</button>
+              <button class="btn secondary" onclick="clearPdfRawText()">내용 비우기</button>
+            </div>
+
+            <textarea id="pdfRawText" class="input raw-preview" style="min-height:280px;resize:vertical" oninput="updatePdfLineCount();clearImportStatusAnalysis()"></textarea>
+
+            <div id="fileImportSummary" class="import-status" style="display:none"></div>
+            <div id="fileImportCandidates"></div>
+          </div>
+
+          <aside class="import-status-panel">
+            <h3 style="margin-top:0">상태창</h3>
+            <p class="muted">PDF, CSV, 이미지, 직접 입력 모두 같은 기준으로 표시됩니다.</p>
+            <div class="status-summary">
+              <div class="status-box"><b>정상</b><div id="statusOkCount">0</div></div>
+              <div class="status-box"><b>중복</b><div id="statusDupCount">0</div></div>
+              <div class="status-box"><b>미인식/미입력</b><div id="statusBadCount">0</div></div>
+              <div class="status-box"><b>전체</b><div id="statusTotalCount">0</div></div>
+            </div>
+            <div class="status-tabs">
+              <button class="btn secondary" onclick="renderImportStatus('all')">전체</button>
+              <button class="btn secondary" onclick="renderImportStatus('dup')">중복만</button>
+              <button class="btn secondary" onclick="renderImportStatus('bad')">미인식/미입력만</button>
+            </div>
+            <div id="importStatusList" class="status-list">
+              <div class="muted">아직 분석된 항목이 없습니다.</div>
+            </div>
+          </aside>
         </div>
-        <div></div>
       </div>
+
+      
+
 
       </div>
 <span class="pill">수기 · CSV · PDF</span></div>
@@ -752,6 +756,66 @@ function normalizeKanaCandidate(x){
   return x;
 }
 
+
+let importStatusItems=[];
+let importStatusFilter="all";
+
+function openImportWorkspace(source="text"){
+  const ws=document.getElementById("importWorkspace");
+  if(!ws)return;
+  ws.classList.add("open");
+  const label={text:"텍스트 직접 입력",pdf:"PDF 파일",csv:"CSV 파일",image:"이미지 파일"}[source]||"가져오기";
+  const src=document.getElementById("importWorkspaceSource");
+  if(src)src.textContent=label;
+  const paste=document.getElementById("bulkPastePanel");
+  if(paste)paste.style.display=source==="text"?"block":"none";
+  ws.scrollIntoView({behavior:"smooth",block:"start"});
+  if(source==="text")setTimeout(()=>document.getElementById("bulkPasteInput")?.focus(),250);
+}
+function closeImportWorkspace(){document.getElementById("importWorkspace")?.classList.remove("open");}
+function clearImportStatusAnalysis(){importStatusItems=[];renderImportStatus("all");}
+function setImportStatusItems(items){importStatusItems=items||[];renderImportStatus(importStatusFilter);}
+function renderImportStatus(kind="all"){
+  importStatusFilter=kind;
+  const list=document.getElementById("importStatusList");
+  if(!list)return;
+  const ok=importStatusItems.filter(x=>x.state==="ok").length;
+  const dup=importStatusItems.filter(x=>x.state==="dup").length;
+  const bad=importStatusItems.filter(x=>x.state==="bad").length;
+  document.getElementById("statusOkCount").textContent=ok;
+  document.getElementById("statusDupCount").textContent=dup;
+  document.getElementById("statusBadCount").textContent=bad;
+  document.getElementById("statusTotalCount").textContent=importStatusItems.length;
+  const shown=importStatusItems.filter(x=>kind==="all"||x.state===kind);
+  list.innerHTML=shown.length?shown.map(x=>{
+    const cls=x.state==="ok"?"status-ok":x.state==="dup"?"status-dup":"status-bad";
+    const label=x.state==="ok"?"정상":x.state==="dup"?"중복":"미인식/미입력";
+    return `<div class="status-item ${cls}"><b>${label}</b>${x.line?` · ${x.line}줄`:""}<br>${escapeHtml(x.text||x.word||"")}${x.reason?`<div class="muted">${escapeHtml(x.reason)}</div>`:""}</div>`;
+  }).join(""):'<div class="muted">표시할 항목이 없습니다.</div>';
+}
+async function openImportFileFromUnified(type,event){
+  openImportWorkspace(type);
+  await uploadVocabularyFile(type,event);
+  if(type==="csv")buildStatusFromCandidates();
+}
+async function openImportImageFromUnified(event){
+  openImportWorkspace("image");
+  await importVocabularyImage(event);
+  buildStatusFromCandidates();
+}
+function buildStatusFromCandidates(){
+  const items=(fileImportCandidates||[]).map((x,i)=>{
+    const missing=[];
+    if(!x.word)missing.push("단어");
+    if(!x.reading)missing.push("요미가나");
+    if(!x.meaning)missing.push("뜻");
+    if(missing.length)return {state:"bad",text:`${i+1}. ${x.word||"(단어 없음)"}`,reason:`미입력: ${missing.join(", ")}`};
+    if(x.duplicate)return {state:"dup",text:`${i+1}. ${x.word} ${x.reading} ${x.meaning}`};
+    return {state:"ok",text:`${i+1}. ${x.word} ${x.reading} ${x.meaning}`};
+  });
+  setImportStatusItems(items);
+}
+
 let fileImportCandidates=[];
 
 
@@ -802,7 +866,7 @@ async function importVocabularyImage(event){
     }
 
     progress.textContent=`OCR 완료 · 추출 ${text.length.toLocaleString()}자`;
-    setInlinePdfText(text);
+    document.getElementById("pdfRawText").value=text; updatePdfLineCount();
     await diagnosePdfText();
     toast("✅ 이미지 글자를 편집기로 불러왔습니다.");
   }catch(e){
@@ -848,6 +912,7 @@ async function uploadVocabularyFile(type,event){
       status.textContent=`CSV ${data.row_count||0}행 분석 · 후보 ${fileImportCandidates.length}개 · 인코딩 ${data.encoding||""}`;
     }
     renderFileImportCandidates();
+    buildStatusFromCandidates();
     if(!fileImportCandidates.length){
       toast(type==="pdf"?"자동으로 찾은 단어 후보가 없습니다. 가져오기 원문을 확인해주세요.":"등록 가능한 CSV 행을 찾지 못했습니다.");
     }else{
@@ -868,7 +933,7 @@ let pdfDiagItems=[];
 let pdfDiagFilter="all";
 
 async function diagnosePdfText(){
-  syncHiddenPdfText();
+  
   const text=document.getElementById("pdfRawText").value;
   const list=document.getElementById("pdfDiagList");
   const summary=document.getElementById("pdfDiagSummary");
@@ -904,48 +969,36 @@ async function diagnosePdfText(){
 function showOnlyDiag(kind){ filterInlinePdf(kind); }
 
 function renderPdfDiagnostics(){
-  if(!pdfDiagItems.length){
-    applyInlineDiagnostics();
-    return;
-  }
-  applyInlineDiagnostics();
-
-  const unrecognized=pdfDiagItems.filter(x=>x.status==="unrecognized").length;
-  const duplicate=pdfDiagItems.filter(x=>x.duplicate).length;
-  const normal=pdfDiagItems.filter(x=>x.status!=="unrecognized"&&!x.duplicate).length;
-
-  const out=document.getElementById("pdfReanalyzeStatus");
-  if(out){
-    out.textContent=`진단 결과 · 정상 ${normal}개 · 중복 ${duplicate}개 · 미인식 ${unrecognized}개`;
-  }
+  const items=(pdfDiagItems||[]).map(x=>{
+    if(x.status==="unrecognized")return {state:"bad",line:x.line_no,text:x.text,reason:"형식을 인식하지 못했습니다."};
+    if(x.duplicate)return {state:"dup",line:x.line_no,text:x.text||`${x.word} ${x.reading} ${x.meaning}`};
+    return {state:"ok",line:x.line_no,text:x.text||`${x.word} ${x.reading} ${x.meaning}`};
+  });
+  setImportStatusItems(items);
 }
 
 
 
-function openBulkPaste(){
-  const p=document.getElementById("bulkPastePanel");
-  p.style.display="block";
-  p.scrollIntoView({behavior:"smooth",block:"center"});
+function openBulkPaste(){ openImportWorkspace("text"); });
   setTimeout(()=>document.getElementById("bulkPasteInput").focus(),250);
 }
-function closeBulkPaste(){
-  document.getElementById("bulkPastePanel").style.display="none";
-}
-function applyBulkPaste(){
-  const text=document.getElementById("bulkPasteInput").value;
+function closeBulkPaste(){ document.getElementById("bulkPastePanel").style.display="none"; }
+async function applyBulkPaste(){
+  const text=document.getElementById("bulkPasteInput")?.value||"";
   if(!text.trim()){toast("붙여넣은 텍스트가 없습니다.");return;}
-  setInlinePdfText(text);
-  closeBulkPaste();
-  diagnosePdfText();
+  document.getElementById("pdfRawText").value=text;
+  updatePdfLineCount();
+  await diagnosePdfText();
+  await reanalyzePdfText(false);
 }
-function appendBulkPaste(){
-  const add=document.getElementById("bulkPasteInput").value;
+async function appendBulkPaste(){
+  const add=document.getElementById("bulkPasteInput")?.value||"";
   if(!add.trim()){toast("붙여넣은 텍스트가 없습니다.");return;}
-  syncHiddenPdfText();
-  const current=document.getElementById("pdfRawText").value;
-  setInlinePdfText(current ? current.replace(/\s*$/,"")+"\n"+add : add);
-  closeBulkPaste();
-  diagnosePdfText();
+  const el=document.getElementById("pdfRawText");
+  el.value=el.value.trim()?el.value.replace(/\s*$/,"")+"\n"+add:add;
+  updatePdfLineCount();
+  await diagnosePdfText();
+  await reanalyzePdfText(false);
 }
 
 let inlinePdfFilter="all";
@@ -966,7 +1019,7 @@ function setInlinePdfText(text){
       <input class="inline-pdf-line" value="${escapeHtml(line)}"
         oninput="onInlinePdfInput(this)">
     </div>`).join("");
-  syncHiddenPdfText();
+  
   pdfDiagItems=[];
 }
 
@@ -974,7 +1027,7 @@ function onInlinePdfInput(input){
   const row=input.closest(".inline-pdf-row");
   row.className="inline-pdf-row pending";
   row.querySelector(".inline-pdf-dot").title="미진단";
-  syncHiddenPdfText();
+  
   pdfDiagItems=[];
 }
 
@@ -1023,7 +1076,7 @@ function updatePdfLineCount(){
 }
 
 async function reanalyzePdfText(appendMode){
-  syncHiddenPdfText();
+  
   const text=document.getElementById("pdfRawText").value.trim();
   const status=document.getElementById("pdfReanalyzeStatus");
   if(!text){toast("재분석할 원문을 남겨주세요.");return;}
@@ -1066,7 +1119,7 @@ async function reanalyzePdfText(appendMode){
 }
 
 function clearPdfRawText(){
-  setInlinePdfText("");
+  document.getElementById("pdfRawText").value=""; updatePdfLineCount();
   document.getElementById("pdfReanalyzeStatus").textContent="";
   updatePdfLineCount();
   pdfDiagItems=[];renderPdfDiagnostics();
@@ -1074,6 +1127,7 @@ function clearPdfRawText(){
 
 
 function renderFileImportCandidates(){
+  setTimeout(buildStatusFromCandidates,0);
   const box=document.getElementById("fileImportCandidates");
   const summary=document.getElementById("fileImportSummary");
 
