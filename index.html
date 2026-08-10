@@ -107,17 +107,17 @@ textarea.input{min-height:170px;resize:vertical}
 
 <main class="main">
 <section id="home">
-  <div class="top"><div><h1>오늘의 학습</h1><div class="muted" style="margin-top:6px">설정에서 선택한 레벨 조합으로 오늘의 단어를 구성합니다.</div></div><span class="pill">2026.08.10</span></div>
+  <div class="top"><div><h1>오늘의 학습</h1><div class="muted" style="margin-top:6px">설정에서 선택한 레벨 조합으로 오늘의 단어를 구성합니다.</div></div><span class="pill" id="todayDatePill"></span></div>
   <div class="panel" style="margin-bottom:18px">
     <h2>오늘 학습 레벨</h2>
     <div id="homeLevelChips" class="tabs"></div>
     <div class="muted">여러 레벨을 동시에 선택할 수 있습니다. 선택 결과는 설정과 연동됩니다.</div>
   </div>
   <div class="cards">
-    <div class="card"><div class="muted">오늘의 새 단어</div><div class="stat">34 / 50</div><div class="progress"><div style="width:68%"></div></div><div class="muted">16개 남음</div></div>
-    <div class="card"><div class="muted">오답 단어</div><div class="stat">12</div><div class="muted">오늘 복습 가능</div></div>
-    <div class="card"><div class="muted">전체 단어</div><div class="stat" id="totalCount">3,241</div><div class="muted">기초 ~ N1</div></div>
-    <div class="card"><div class="muted">현재 연속 학습</div><div class="stat" id="streakStat">7일 🔥</div><div class="muted">실제 학습한 날만 인정</div></div>
+    <div class="card"><div class="muted">오늘의 새 단어</div><div class="stat" id="todayStudyCount">0 / 50</div><div class="progress"><div id="todayStudyProgress" style="width:0%"></div></div><div class="muted" id="todayStudyRemain">오늘 학습 0개</div></div>
+    <div class="card"><div class="muted">오답 단어</div><div class="stat" id="homeWrongCount">0</div><div class="muted">학습 중 오답</div></div>
+    <div class="card"><div class="muted">전체 단어</div><div class="stat" id="totalCount">0</div><div class="muted">기초 ~ N1</div></div>
+    <div class="card"><div class="muted">현재 연속 학습</div><div class="stat" id="streakStat">0일</div><div class="muted">실제 학습한 날만 인정</div></div>
   </div>
   <div class="grid2">
     <div class="panel">
@@ -338,13 +338,9 @@ textarea.input{min-height:170px;resize:vertical}
 <div id="toast" class="toast"></div>
 
 <script>
-let words=[
-["勉強","べんきょう","공부","N5"],["旅行","りょこう","여행","N5"],["必要","ひつよう","필요","N4"],["準備","じゅんび","준비","N4"],
-["経験","けいけん","경험","N3"],["状況","じょうきょう","상황","N3"],["判断","はんだん","판단","N3"],
-["改善","かいぜん","개선","N2"],["予測","よそく","예측","N2"],["著しい","いちじるしい","현저하다","N1"]
-];
+let words=[];
 let currentFilter="all", currentQuery="";
-let selectedStudyLevels = ["basic","N3","N2"];
+let selectedStudyLevels = ["basic","N3","N2","N1"];
 let pendingStudyLevels = [...selectedStudyLevels];
 
 function levelLabel(level){
@@ -399,17 +395,17 @@ function renderTodayWords(){
 
 
 
-let studyLog=["2026-08-04","2026-08-05","2026-08-06","2026-08-07","2026-08-08","2026-08-09"];
-let maxStreak=21;
+let studyLog=[];
+let maxStreak=0;
 function markStudyToday(){
- const d="2026-08-10";
+ const d=new Date().toISOString().slice(0,10);
  if(!studyLog.includes(d))studyLog.push(d);
  renderStudyStats();saveAppState();
 }
 function renderStudyStats(){
  const sorted=[...new Set(studyLog)].sort();
  let current=0;
- const today=new Date("2026-08-10T00:00:00");
+ const today=new Date();
  for(let i=0;i<1000;i++){
    const d=new Date(today);d.setDate(today.getDate()-i);
    const key=d.toISOString().slice(0,10);
@@ -425,6 +421,33 @@ function renderStudyStats(){
    let arr=[];for(let i=6;i>=0;i--){let d=new Date(today);d.setDate(today.getDate()-i);let key=d.toISOString().slice(0,10);arr.push({label:(d.getMonth()+1)+"/"+d.getDate(),done:sorted.includes(key)})}
    cal.innerHTML=arr.map(x=>`<div class="daybox ${x.done?"done":""}">${x.label}<br>${x.done?"✓":"-"}</div>`).join("");
  }
+}
+
+
+function localDateKey(){
+  const d=new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+}
+function displayToday(){
+  const d=new Date();
+  return `${d.getFullYear()}.${String(d.getMonth()+1).padStart(2,"0")}.${String(d.getDate()).padStart(2,"0")}`;
+}
+function updateHomeStats(){
+  const daily=Math.max(1,Math.min(100,parseInt((document.getElementById("daily")||{}).value||50)));
+  const studiedToday=[...new Set(todayStudiedWords)].length;
+  const wrongCount=Array.isArray(wrongItems)?wrongItems.filter(x=>x.status==="study").length:0;
+  const dateEl=document.getElementById("todayDatePill");
+  if(dateEl)dateEl.textContent=displayToday();
+  const c=document.getElementById("todayStudyCount");
+  if(c)c.textContent=`${studiedToday} / ${daily}`;
+  const p=document.getElementById("todayStudyProgress");
+  if(p)p.style.width=Math.min(100,studiedToday/daily*100)+"%";
+  const r=document.getElementById("todayStudyRemain");
+  if(r)r.textContent=studiedToday===0?"오늘 학습 0개":`오늘 ${studiedToday}개 학습`;
+  const w=document.getElementById("homeWrongCount");
+  if(w)w.textContent=wrongCount;
+  const t=document.getElementById("totalCount");
+  if(t)t.textContent=words.length.toLocaleString();
 }
 
 function showPage(id,btn){
@@ -499,7 +522,7 @@ function removeWordAt(i){
  todayStudiedWords=todayStudiedWords.filter(x=>x!==name);
  studiedWordHistory=studiedWordHistory.filter(x=>x!==name);
  wrongItems=wrongItems.filter(x=>x.word!==name);
- document.getElementById("totalCount").textContent=(3241+words.length-10).toLocaleString();
+ document.getElementById("totalCount").textContent=words.length.toLocaleString();
 }
 let editingIndex=null;
 function openEditWord(i){
@@ -634,7 +657,7 @@ function importYoutubeCandidates(){
  saveAppState();renderWords();
  youtubeCandidates.forEach(x=>x.duplicate=words.some(w=>w[0]===x.word.trim()&&w[1]===x.reading.trim()));
  renderYoutubeCandidates();
- document.getElementById("totalCount").textContent=(3241+words.length-10).toLocaleString();
+ document.getElementById("totalCount").textContent=words.length.toLocaleString();
  toast(`✅ ${added}개 등록${skipped?` · ${skipped}개 건너뜀`:""}`);
 }
 
@@ -642,7 +665,7 @@ function addWord(){
  let w=document.getElementById("w").value.trim(),r=document.getElementById("r").value.trim(),m=document.getElementById("m").value.trim(),l=document.getElementById("l").value;
  if(!w||!r||!m)return toast("단어, 읽기, 뜻을 모두 입력해주세요.");
  if(words.some(x=>x[0]===w&&x[1]===r))return toast("⚠️ 이미 등록된 단어입니다.");
- words.push([w,r,m,l]); document.getElementById("totalCount").textContent=(3241+words.length-10).toLocaleString();
+ words.push([w,r,m,l]); document.getElementById("totalCount").textContent=words.length.toLocaleString();
  document.getElementById("w").value=document.getElementById("r").value=document.getElementById("m").value="";
  toast("✅ 단어가 등록되었습니다.");saveAppState();
 }
@@ -655,9 +678,9 @@ let testQueue=[];
 let testIndex=0;
 
 // prototype: words in this array represent the words studied today
-let todayStudiedWords=["勉強","旅行","必要","経験","状況","改善","予測","著しい"];
+let todayStudiedWords=[];
 // 누적 복습 대상: 실제로 한 번 이상 학습한 단어만 포함
-let studiedWordHistory=["勉強","旅行","必要","準備","経験","状況","判断","改善","予測","著しい"];
+let studiedWordHistory=[];
 
 function selectTestType(btn,type){
  testType=type;
@@ -742,12 +765,7 @@ function exitTest(){
  document.getElementById("testProgressPill").textContent="테스트 설정";
 }
 let wrongTab="study";
-let wrongItems=[
- {word:"予測",reading:"よそく",meaning:"예측",level:"N2",wrongCount:4,today:[false,true,false,false],status:"study"},
- {word:"著しい",reading:"いちじるしい",meaning:"현저하다",level:"N1",wrongCount:2,today:[true,false,true],status:"study"},
- {word:"判断",reading:"はんだん",meaning:"판단",level:"N3",wrongCount:3,today:[true,true,true,false,true],status:"done"},
- {word:"改善",reading:"かいぜん",meaning:"개선",level:"N2",wrongCount:1,today:[],status:"study"}
-];
+let wrongItems=[];
 
 function setWrongTab(tab,btn){
  wrongTab=tab;
@@ -846,8 +864,9 @@ async function api(path, options={}){
   return data;
 }
 
+const APP_DATA_VERSION="clean-live-v2-full-reset";
 function getAppState(){
-  return {words,selectedStudyLevels,pendingStudyLevels,todayStudiedWords,studiedWordHistory,wrongItems,studyLog,maxStreak,
+  return {dataVersion:APP_DATA_VERSION,words,selectedStudyLevels,pendingStudyLevels,todayStudiedWords,studiedWordHistory,wrongItems,studyLog,maxStreak,
     dailyWordCount:parseInt((document.getElementById("daily")||{}).value||50),savedAt:new Date().toISOString()};
 }
 async function saveAppState(){
@@ -864,21 +883,40 @@ async function saveAppState(){
 async function loadAppState(){
   const data=await api("/api/state");
   const st=data.state;
-  if(st){
-    if(Array.isArray(st.words))words=st.words;
-    if(Array.isArray(st.selectedStudyLevels))selectedStudyLevels=st.selectedStudyLevels;
+
+  // 이 버전을 처음 배포한 1회에만 기존 프로토타입/샘플 데이터를 초기화
+  if(!st || st.dataVersion!==APP_DATA_VERSION){
+    words=[];
+    selectedStudyLevels=["basic","N3","N2","N1"];
     pendingStudyLevels=[...selectedStudyLevels];
-    if(Array.isArray(st.todayStudiedWords))todayStudiedWords=st.todayStudiedWords;
-    if(Array.isArray(st.studiedWordHistory))studiedWordHistory=st.studiedWordHistory;
-    if(Array.isArray(st.wrongItems))wrongItems=st.wrongItems;
-    if(Array.isArray(st.studyLog))studyLog=st.studyLog;
-    if(Number.isFinite(st.maxStreak))maxStreak=st.maxStreak;
-    if(st.dailyWordCount&&document.getElementById("daily"))document.getElementById("daily").value=st.dailyWordCount;
+    todayStudiedWords=[];
+    studiedWordHistory=[];
+    wrongItems=[];
+    studyLog=[];
+    maxStreak=0;
+    // 이전 버전의 오답/복습 데이터도 이번 마이그레이션에서 완전히 폐기
+    if(typeof localStorage!=="undefined"){
+      ["wrongItems","wrongNotes","wrongReview","reviewItems","jlpt_wrong_items","jlpt_wrong_review"].forEach(k=>localStorage.removeItem(k));
+    }
+    if(document.getElementById("daily"))document.getElementById("daily").value=50;
+    serverReady=true;
+    await saveAppState();
+    return;
   }
+
+  if(Array.isArray(st.words))words=st.words;
+  if(Array.isArray(st.selectedStudyLevels))selectedStudyLevels=st.selectedStudyLevels;
+  pendingStudyLevels=[...selectedStudyLevels];
+  if(Array.isArray(st.todayStudiedWords))todayStudiedWords=st.todayStudiedWords;
+  if(Array.isArray(st.studiedWordHistory))studiedWordHistory=st.studiedWordHistory;
+  if(Array.isArray(st.wrongItems))wrongItems=st.wrongItems;
+  if(Array.isArray(st.studyLog))studyLog=st.studyLog;
+  if(Number.isFinite(st.maxStreak))maxStreak=st.maxStreak;
+  if(st.dailyWordCount&&document.getElementById("daily"))document.getElementById("daily").value=st.dailyWordCount;
   serverReady=true;
 }
 function refreshAllUI(){
-  renderWords();renderHomeLevelChips();renderTodayWords();renderWrongList();renderStudyStats();updateSettingSelection();updateTestSummary();
+  renderWords();renderHomeLevelChips();renderTodayWords();renderWrongList();renderStudyStats();updateSettingSelection();updateTestSummary();updateHomeStats();
 }
 function exportBackup(){
   const blob=new Blob([JSON.stringify(getAppState(),null,2)],{type:"application/json"});
@@ -919,6 +957,7 @@ renderWrongList();
 updateTestSummary();
 document.getElementById("allCountBtn").style.display="inline-block";
 renderStudyStats();
+updateHomeStats();
 loadAppState().then(()=>refreshAllUI()).catch(e=>console.error(e));
 </script>
 </body></html>
