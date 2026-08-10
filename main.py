@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import html
+import csv
+import io
 import json
 import os
 import re
@@ -9,10 +11,11 @@ import urllib.request
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi import FastAPI, HTTPException, Request, Response, UploadFile, File
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 from yt_dlp import YoutubeDL
+from pypdf import PdfReader
 
 try:
     import psycopg
@@ -124,6 +127,201 @@ def get_state():
 def put_state(req: StateRequest):
     save_state(req.state)
     return {"ok": True}
+
+
+MAX_IMPORT_BYTES = 20 * 1024 * 1024
+
+HEADER_ALIASES = {
+    "word": {"word","단어","일본어","한자","표기","語彙","単語","漢字"},
+    "reading": {"reading","읽기","요미가나","발음","かな","よみ","読み","ふりがな","フリガナ"},
+    "meaning": {"meaning","뜻","의미","한국어","번역","意味","뜻/의미"},
+    "level": {"level","레벨","jlpt","급수","분류"},
+    "example": {"example","예문","例文"},
+}
+
+def normalize_header(value: str) -> str:
+    return re.sub(r"[\s_\-./]+", "", (value or "").strip().lower())
+
+def canonical_header(value: str) -> str | None:
+    n = normalize_header(value)
+    for key, aliases in HEADER_ALIASES.items():
+        if n in {normalize_header(a) for a in aliases}:
+            return key
+    return None
+
+def normalize_level(value: str | None) -> str:
+    v = (value or "").strip().upper().replace(" ", "")
+    if v in {"N5","N4","N5/N4","N4/N5","BASIC","기초","기초일본어단어(N5/N4)"}:
+        return "basic"
+    if v in {"N3","N2","N1"}:
+        return v
+    return ""
+
+def candidate(word="", reading="", meaning="", level="", example=""):
+    return {
+        "word": str(word or "").strip(),
+        "reading": str(reading or "").strip(),
+        "meaning": str(meaning or "").strip(),
+        "level": normalize_level(level),
+        "example": str(example or "").strip(),
+    }
+
+def is_useful_candidate(c: dict[str, str]) -> bool:
+    return bool(c["word"] and c["reading"] and c["meaning"])
+
+def dedupe_candidates(items: list[dict[str, str]]) -> list[dict[str, str]]:
+    out, seen = [], set()
+    for c in items:
+        if not is_useful_candidate(c):
+            continue
+        key = (c["word"], c["reading"])
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(c)
+    return out
+
+def decode_text_bytes(data: bytes) -> tuple[str, str]:
+    for enc in ("utf-8-sig", "utf-8", "cp949", "shift_jis"):
+        try:
+            return data.decode(enc), enc
+        except UnicodeDecodeError:
+            pass
+    raise HTTPException(status_code=422, detail="CSV 문자 인코딩을 읽을 수 없습니다. UTF-8 CSV로 저장해서 다시 시도해주세요.")
+
+def parse_csv_candidates(text: str) -> tuple[list[dict[str, str]], dict[str, Any]]:
+    sample = text[:10000]
+    try:
+        dialect = csv.Sniffer().sniff(sample, delimiters=",\t;|")
+    except csv.Error:
+        dialect = csv.excel
+
+    rows = list(csv.reader(io.StringIO(text), dialect))
+    rows = [[cell.strip() for cell in row] for row in rows if any(cell.strip() for cell in row)]
+    if not rows:
+        return [], {"has_header": False, "columns": []}
+
+    header_map: dict[int, str] = {}
+    for idx, cell in enumerate(rows[0]):
+        key = canonical_header(cell)
+        if key:
+            header_map[idx] = key
+
+    has_header = {"word","reading","meaning"}.issubset(set(header_map.values()))
+    data_rows = rows[1:] if has_header else rows
+    items: list[dict[str, str]] = []
+
+    if has_header:
+        for row in data_rows:
+            vals = {"word":"","reading":"","meaning":"","level":"","example":""}
+            for idx, key in header_map.items():
+                if idx < len(row):
+                    vals[key] = row[idx]
+            items.append(candidate(**vals))
+    else:
+        # Headerless CSV: first three columns = word / reading / meaning, optional 4th=level, 5th=example
+        for row in data_rows:
+            if len(row) < 3:
+                continue
+            items.append(candidate(
+                word=row[0],
+                reading=row[1],
+                meaning=row[2],
+                level=row[3] if len(row) > 3 else "",
+                example=row[4] if len(row) > 4 else "",
+            ))
+
+    return dedupe_candidates(items), {
+        "has_header": has_header,
+        "columns": rows[0] if has_header else [],
+        "row_count": len(data_rows),
+    }
+
+def extract_vocab_candidates_from_text(text: str) -> list[dict[str, str]]:
+    # Vocabulary-list oriented extraction. We intentionally keep this conservative
+    # so random Japanese prose is not silently registered as vocabulary.
+    lines = [re.sub(r"\s+", " ", x).strip() for x in text.splitlines() if x.strip()]
+    found: list[dict[str, str]] = []
+
+    p1 = re.compile(r"([一-龯々ぁ-んァ-ヶー]+)\s*[（(]([ぁ-んァ-ヶー]+)[）)]\s*[-–—:：]?\s*([가-힣].*)$")
+    p2 = re.compile(r"([一-龯々]+[ぁ-んァ-ヶー]*)\s+([ぁ-んァ-ヶー]+)\s+([가-힣].*)$")
+    p3 = re.compile(r"^([一-龯々ぁ-んァ-ヶー]+)\s*[\t|｜]\s*([ぁ-んァ-ヶー]+)\s*[\t|｜]\s*([가-힣].*)$")
+
+    for line in lines:
+        clean = re.sub(r"^\s*(?:\d+[.)]|[-•▪︎●■□])\s*", "", line)
+        m = p1.search(clean) or p2.search(clean) or p3.search(clean)
+        if m:
+            found.append(candidate(m.group(1), m.group(2), m.group(3)))
+
+    # PDF extraction often separates table cells into adjacent lines:
+    # 漢字 / かな / 한국어
+    for i in range(len(lines) - 2):
+        a, b, c = lines[i:i+3]
+        if re.fullmatch(r"[一-龯々ぁ-んァ-ヶー]+", a) and re.search(r"[一-龯々]", a):
+            if re.fullmatch(r"[ぁ-んァ-ヶー]+", b) and re.search(r"[가-힣]", c):
+                found.append(candidate(a, b, c))
+
+    return dedupe_candidates(found)
+
+
+@app.post("/api/import/csv")
+async def import_csv(file: UploadFile = File(...)):
+    data = await file.read()
+    if len(data) > MAX_IMPORT_BYTES:
+        raise HTTPException(status_code=413, detail="CSV 파일은 20MB 이하만 업로드할 수 있습니다.")
+    if not data:
+        raise HTTPException(status_code=422, detail="빈 CSV 파일입니다.")
+
+    text, encoding = decode_text_bytes(data)
+    items, meta = parse_csv_candidates(text)
+    return {
+        "filename": file.filename,
+        "encoding": encoding,
+        "candidates": items,
+        "candidate_count": len(items),
+        **meta,
+    }
+
+
+@app.post("/api/import/pdf")
+async def import_pdf(file: UploadFile = File(...)):
+    data = await file.read()
+    if len(data) > MAX_IMPORT_BYTES:
+        raise HTTPException(status_code=413, detail="PDF 파일은 20MB 이하만 업로드할 수 있습니다.")
+    if not data:
+        raise HTTPException(status_code=422, detail="빈 PDF 파일입니다.")
+
+    try:
+        reader = PdfReader(io.BytesIO(data))
+    except Exception as e:
+        raise HTTPException(status_code=422, detail=f"PDF를 열 수 없습니다: {e}")
+
+    page_texts = []
+    for page in reader.pages:
+        try:
+            page_texts.append(page.extract_text() or "")
+        except Exception:
+            page_texts.append("")
+
+    full_text = "\n".join(page_texts).strip()
+    if not full_text:
+        raise HTTPException(
+            status_code=422,
+            detail="이 PDF에서는 텍스트를 추출할 수 없습니다. 스캔 이미지형 PDF일 가능성이 큽니다. 텍스트 선택이 가능한 PDF를 사용해주세요."
+        )
+
+    items = extract_vocab_candidates_from_text(full_text)
+    return {
+        "filename": file.filename,
+        "page_count": len(reader.pages),
+        "text_char_count": len(full_text),
+        "candidate_count": len(items),
+        "candidates": items,
+        # 사용자가 자동 추출 실패 시 확인/복사할 수 있도록 일부가 아니라 전체 텍스트 반환.
+        "extracted_text": full_text,
+        "message": "자동 후보가 적거나 없으면 추출 텍스트를 확인해 직접 수정 후 등록할 수 있습니다."
+    }
+
 
 def choose_subtitle(info: dict[str, Any]) -> tuple[str, dict[str, Any], str]:
     manual = info.get("subtitles") or {}

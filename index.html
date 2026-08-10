@@ -86,6 +86,17 @@ h1{font-size:28px;margin:0} h2{font-size:17px;margin:0 0 15px}
 textarea.input{min-height:170px;resize:vertical}
 @media(max-width:800px){.yt-candidate{grid-template-columns:32px 1fr 1fr}.yt-candidate .yt-meaning,.yt-candidate .yt-status{grid-column:2/4}}
 
+
+.file-import-card{border:1px solid var(--line);border-radius:14px;padding:18px;background:#fff;margin-top:16px}
+.import-status{margin-top:10px;padding:10px 12px;border-radius:9px;background:#f7f8fa;font-size:13px;color:var(--muted)}
+.import-candidate{display:grid;grid-template-columns:34px 1.1fr 1.1fr 1.3fr 120px 95px;gap:8px;align-items:center;border-bottom:1px solid #eee;padding:9px 0}
+.import-candidate.head{font-size:12px;font-weight:700;color:var(--muted)}
+.import-candidate .input,.import-candidate .select{margin:0}
+.raw-preview{white-space:pre-wrap;max-height:260px;overflow:auto;background:#f7f8fa;border:1px solid var(--line);border-radius:10px;padding:12px;font-size:12px}
+@media(max-width:900px){
+ .import-candidate{grid-template-columns:30px 1fr 1fr}
+ .import-candidate .imp-meaning,.import-candidate .imp-level,.import-candidate .imp-status{grid-column:2/4}
+}
 </style>
 </head>
 <body>
@@ -176,7 +187,25 @@ textarea.input{min-height:170px;resize:vertical}
     <label class="muted">예문 (선택)</label><input class="input" placeholder="예문을 입력하세요">
     <div class="actions"><button class="btn primary" onclick="addWord()">저장</button></div>
     <p class="muted">같은 단어 + 같은 읽기가 이미 있으면 중복 등록을 막습니다.</p>
-    <div class="importbox"><b>파일로 가져오기</b><p class="muted">CSV 또는 PDF 파일을 읽어 단어 후보를 확인한 뒤 등록하는 영역</p><div class="actions" style="justify-content:center"><button class="btn secondary" onclick="toast('CSV 가져오기 프로토타입입니다.')">CSV 가져오기</button><button class="btn secondary" onclick="toast('PDF 가져오기 프로토타입입니다.')">PDF 가져오기</button></div></div>
+    <div class="file-import-card">
+      <h2>CSV / PDF 파일로 가져오기</h2>
+      <p class="muted">파일을 서버에서 실제로 읽은 뒤 후보를 보여줍니다. 등록 전에 단어·요미가나·뜻·레벨을 수정할 수 있고 기존 단어는 중복 제외됩니다.</p>
+      <div class="actions">
+        <label class="btn secondary" style="display:inline-block;cursor:pointer">CSV 파일 선택
+          <input id="csvImportFile" type="file" accept=".csv,text/csv" style="display:none" onchange="uploadVocabularyFile('csv',event)">
+        </label>
+        <label class="btn secondary" style="display:inline-block;cursor:pointer">PDF 파일 선택
+          <input id="pdfImportFile" type="file" accept=".pdf,application/pdf" style="display:none" onchange="uploadVocabularyFile('pdf',event)">
+        </label>
+      </div>
+      <div id="fileImportStatus" class="import-status">CSV 또는 PDF를 선택해주세요.</div>
+      <div id="fileImportCandidates"></div>
+      <details id="pdfRawDetails" class="hidden" style="margin-top:12px">
+        <summary style="cursor:pointer;font-weight:700">PDF에서 추출된 원문 확인</summary>
+        <p class="muted">자동 후보가 잡히지 않을 경우 PDF 텍스트 추출 상태를 여기서 확인할 수 있습니다.</p>
+        <div id="pdfRawText" class="raw-preview"></div>
+      </details>
+    </div>
 
     <div class="youtube-box">
       <h2>YouTube 링크로 단어 가져오기</h2>
@@ -549,6 +578,116 @@ function saveEdit(){
 }
 
 function searchWords(q){currentQuery=q.trim();renderWords()}
+
+
+
+let fileImportCandidates=[];
+
+async function uploadVocabularyFile(type,event){
+  const file=event.target.files&&event.target.files[0];
+  if(!file)return;
+  const status=document.getElementById("fileImportStatus");
+  const box=document.getElementById("fileImportCandidates");
+  const rawDetails=document.getElementById("pdfRawDetails");
+  status.textContent=`${file.name} 업로드 및 분석 중...`;
+  box.innerHTML="";
+  rawDetails.classList.add("hidden");
+  try{
+    const fd=new FormData();
+    fd.append("file",file);
+    const res=await fetch(`/api/import/${type}`,{method:"POST",body:fd});
+    const data=await res.json().catch(()=>({}));
+    if(!res.ok)throw new Error(data.detail||"파일을 분석하지 못했습니다.");
+
+    fileImportCandidates=(data.candidates||[]).map(x=>{
+      const duplicate=words.some(w=>w[0]===x.word&&w[1]===x.reading);
+      return {
+        word:x.word||"",reading:x.reading||"",meaning:x.meaning||"",
+        level:x.level||"",example:x.example||"",
+        duplicate,selected:!duplicate
+      };
+    });
+
+    if(type==="pdf"){
+      document.getElementById("pdfRawText").textContent=data.extracted_text||"";
+      rawDetails.classList.remove("hidden");
+      status.textContent=`PDF ${data.page_count}페이지 · 텍스트 ${Number(data.text_char_count||0).toLocaleString()}자 · 단어 후보 ${fileImportCandidates.length}개`;
+    }else{
+      status.textContent=`CSV ${data.row_count||0}행 분석 · 후보 ${fileImportCandidates.length}개 · 인코딩 ${data.encoding||""}`;
+    }
+    renderFileImportCandidates();
+    if(!fileImportCandidates.length){
+      toast(type==="pdf"?"자동으로 찾은 단어 후보가 없습니다. PDF 원문을 확인해주세요.":"등록 가능한 CSV 행을 찾지 못했습니다.");
+    }else{
+      toast(`✅ ${fileImportCandidates.length}개 후보를 찾았습니다.`);
+    }
+  }catch(e){
+    status.textContent="분석 실패: "+e.message;
+    alert(e.message);
+  }finally{
+    event.target.value="";
+  }
+}
+
+function renderFileImportCandidates(){
+  const box=document.getElementById("fileImportCandidates");
+  if(!fileImportCandidates.length){box.innerHTML="";return;}
+  const levelOptions=(current)=>`
+    <option value="" ${!current?"selected":""}>레벨 선택</option>
+    <option value="basic" ${current==="basic"?"selected":""}>기초(N5/N4)</option>
+    <option value="N3" ${current==="N3"?"selected":""}>N3</option>
+    <option value="N2" ${current==="N2"?"selected":""}>N2</option>
+    <option value="N1" ${current==="N1"?"selected":""}>N1</option>`;
+  box.innerHTML=`<div class="import-candidate head"><div>선택</div><div>단어</div><div>요미가나</div><div class="imp-meaning">뜻</div><div class="imp-level">레벨</div><div class="imp-status">상태</div></div>`+
+    fileImportCandidates.map((x,i)=>`<div class="import-candidate">
+      <div><input type="checkbox" ${x.selected?"checked":""} ${x.duplicate?"disabled":""} onchange="fileImportCandidates[${i}].selected=this.checked"></div>
+      <div><input class="input" value="${escapeHtml(x.word)}" onchange="updateFileCandidate(${i},'word',this.value)"></div>
+      <div><input class="input" value="${escapeHtml(x.reading)}" onchange="updateFileCandidate(${i},'reading',this.value)"></div>
+      <div class="imp-meaning"><input class="input" value="${escapeHtml(x.meaning)}" onchange="updateFileCandidate(${i},'meaning',this.value)"></div>
+      <div class="imp-level"><select class="select" onchange="fileImportCandidates[${i}].level=this.value">${levelOptions(x.level)}</select></div>
+      <div class="imp-status">${x.duplicate?'<span class="yt-dupe">이미 등록됨</span>':'<span class="yt-new">신규</span>'}</div>
+    </div>`).join("")+
+    `<div class="actions">
+      <button class="btn primary" onclick="importFileCandidates()">선택한 단어 등록</button>
+      <button class="btn secondary" onclick="selectAllFileCandidates(true)">신규 전체 선택</button>
+      <button class="btn secondary" onclick="selectAllFileCandidates(false)">전체 해제</button>
+    </div>`;
+}
+
+function updateFileCandidate(i,key,value){
+  fileImportCandidates[i][key]=value.trim();
+  if(key==="word"||key==="reading"){
+    const x=fileImportCandidates[i];
+    x.duplicate=words.some(w=>w[0]===x.word&&w[1]===x.reading);
+    if(x.duplicate)x.selected=false;
+    renderFileImportCandidates();
+  }
+}
+
+function selectAllFileCandidates(on){
+  fileImportCandidates.forEach(x=>x.selected=on&&!x.duplicate);
+  renderFileImportCandidates();
+}
+
+async function importFileCandidates(){
+  let added=0, skipped=0;
+  for(const x of fileImportCandidates.filter(x=>x.selected)){
+    const word=x.word.trim(), reading=x.reading.trim(), meaning=x.meaning.trim();
+    const level=x.level||"basic";
+    if(!word||!reading||!meaning){skipped++;continue;}
+    if(words.some(w=>w[0]===word&&w[1]===reading)){skipped++;continue;}
+    words.push([word,reading,meaning,level]);
+    added++;
+  }
+  await saveAppState();
+  fileImportCandidates.forEach(x=>{
+    x.duplicate=words.some(w=>w[0]===x.word.trim()&&w[1]===x.reading.trim());
+    if(x.duplicate)x.selected=false;
+  });
+  renderFileImportCandidates();
+  refreshAllUI();
+  toast(`✅ ${added}개 등록${skipped?` · ${skipped}개 건너뜀`:""}`);
+}
 
 
 async function fetchYoutubeTranscript(){
