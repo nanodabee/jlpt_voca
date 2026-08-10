@@ -170,7 +170,7 @@ textarea.input{min-height:170px;resize:vertical}
 </div>
 <div class="app">
 <aside class="sidebar">
-  <div class="logo">📚 일본어 단어장<div class="sublogo">N5 · N3 · N2 · N1</div></div>
+  <div class="logo">📚 일본어 단어장<div class="sublogo">N5 · N4 · N3 · N2 · N1</div></div>
   <nav class="nav">
     <button class="active" onclick="showPage('home',this)">🏠 오늘의 학습</button>
     <button onclick="showPage('words',this)">📖 전체 단어장</button>
@@ -200,7 +200,7 @@ textarea.input{min-height:170px;resize:vertical}
     <div class="panel">
       <h2>오늘의 새 단어</h2>
       <div id="todayWordList"></div>
-      <div class="actions"><button class="btn primary" onclick="showPage('test')">오늘의 테스트 시작</button><button class="btn secondary" onclick="markStudyToday();renderTodayWords();toast('선택한 레벨 조합에서 새 단어를 갱신했습니다.')">새 단어 갱신</button><button type="button" class="btn primary" onclick="openBulkPaste()">텍스트 직접 입력</button></div>
+      <div class="actions"><button class="btn primary" onclick="showPage('test')">오늘의 테스트 시작</button><button class="btn secondary" onclick="markStudyToday();renderTodayWords();toast('선택한 레벨 조합에서 새 단어를 갱신했습니다.')">새 단어 갱신</button></div>
     </div>
     <div class="panel">
       <h2>오답 복습</h2>
@@ -233,28 +233,24 @@ textarea.input{min-height:170px;resize:vertical}
 </section>
 
 <section id="input" class="hidden">
-  <div class="top"><h1>단어 입력</h1><span class="pill">수기 · CSV · PDF</span></div>
-  <div class="panel">
-    <h2>수기 입력</h2>
-    <div class="row">
-      <div><label class="muted">단어/한자</label><input id="w" class="input" placeholder="예: 経験"></div>
-      <div><label class="muted">읽기</label><input id="r" class="input" placeholder="예: けいけん"></div>
-    </div>
-    <div class="row">
-      <div><label class="muted">뜻</label><input id="m" class="input" placeholder="예: 경험"></div>
-      <div><label class="muted">단어 분류</label>
-        <select id="l" class="select">
-          <option value="N5">N5</option><option value="N4">N4</option>
-          <option value="N3">N3</option>
-          <option value="N2">N2</option>
-          <option value="N1">N1</option>
-        </select>
-      </div>
-    </div>
-    <label class="muted">예문 (선택)</label><input class="input" placeholder="예문을 입력하세요">
-    <div class="actions"><button class="btn primary" onclick="addWord()">저장</button></div>
-    <p class="muted">같은 단어 + 같은 읽기가 이미 있으면 중복 등록을 막습니다.</p>
-    <div class="file-import-card">
+  <div class="top"><h1>단어 입력</h1>
+      <div class="file-import-card" id="directTextImportCard">
+        <h2>텍스트 직접 입력</h2>
+        <p class="muted">PDF나 이미지 파일 없이도 긴 단어 목록을 붙여넣어 분석할 수 있습니다.</p>
+        <div class="actions">
+          <button type="button" class="btn primary" onclick="openBulkPaste()">텍스트 직접 입력</button>
+        </div>
+        <div id="bulkPastePanel" style="display:none;margin:12px 0;padding:16px;border:1px solid var(--line);border-radius:12px;background:#fff">
+          <h3 style="margin-top:0">텍스트 직접 입력</h3>
+          <p class="muted">예: 経験 けいけん 경험, 체험 / ホテル 호텔</p>
+          <textarea id="bulkPasteInput" class="input" style="min-height:220px;resize:vertical" placeholder="여기에 수십~수백 줄을 그대로 붙여넣으세요."></textarea>
+          <div class="actions" style="margin-top:8px">
+            <button class="btn primary" onclick="applyBulkPaste()">텍스트 분석 편집기에 넣기</button>
+            <button class="btn secondary" onclick="appendBulkPaste()">기존 편집 내용 뒤에 추가</button>
+            <button class="btn secondary" onclick="closeBulkPaste()">닫기</button>
+          </div>
+        </div>
+<div class="file-import-card">
       <h2>CSV / PDF / 이미지로 가져오기</h2>
       <p class="muted">파일을 서버에서 실제로 읽은 뒤 후보를 보여줍니다. 등록 전에 단어·요미가나·뜻·레벨을 수정할 수 있고 기존 단어는 중복 제외됩니다.</p>
       <div class="actions">
@@ -279,28 +275,8 @@ textarea.input{min-height:170px;resize:vertical}
       <details id="pdfRawDetails" class="hidden" style="margin-top:12px">
         <summary style="cursor:pointer;font-weight:700">PDF 추출 원문 편집 / 재분석</summary>
         <p class="muted">필요 없는 줄을 지우고 등록할 단어만 남긴 뒤 다시 분석하세요. 한자 단어: 経験（けいけん） 경험 또는 経験 けいけん 경험 / 가나-only 단어: あまり 별로, 그다지 또는 ホテル 호텔</p>
-        <div class="import-status" style="margin:10px 0">
-          <b>PDF 없이도 사용할 수 있습니다.</b><br>
-          아래 버튼을 눌러 긴 텍스트를 한 번에 붙여넣으면 PDF에서 추출한 원문과 동일한 방식으로 분석합니다.
-        </div>
-        <div class="actions" style="margin-bottom:10px">
-          <button class="btn primary" onclick="openBulkPaste()">텍스트 직접 붙여넣기</button>
-        </div>
-        <div id="bulkPastePanel" style="display:none;margin:12px 0;padding:16px;border:1px solid var(--line);border-radius:12px;background:#fff">
-          <h3 style="margin-top:0">텍스트 직접 입력</h3>
-          <p class="muted">PDF나 이미지 없이도 단어 목록을 길게 붙여넣을 수 있습니다. 붙여넣은 뒤 편집기에서 줄별 진단과 후보 추출을 진행합니다.</p>
-          <textarea id="bulkPasteInput" class="input" style="min-height:220px;resize:vertical" placeholder="예)
-経験 けいけん 경험, 체험
-上げる あげる(무엇을) 올리다
-ホテル 호텔
-
-여기에 수십~수백 줄을 그대로 붙여넣어도 됩니다."></textarea>
-          <div class="actions" style="margin-top:8px">
-            <button class="btn primary" onclick="applyBulkPaste()">텍스트 분석 편집기에 넣기</button>
-            <button class="btn secondary" onclick="appendBulkPaste()">기존 편집 내용 뒤에 추가</button>
-            <button class="btn secondary" onclick="closeBulkPaste()">닫기</button>
-          </div>
-        </div>
+        
+        
         <div id="pdfLineCount" class="import-status" style="margin:8px 0">현재 0줄 · 빈 줄 제외 0줄</div>
         <div class="inline-pdf-legend">
           <span>🟢 정상</span><span>🟡 중복</span><span>🔴 미인식</span><span>⚪ 미진단</span>
@@ -350,6 +326,30 @@ textarea.input{min-height:170px;resize:vertical}
         </div>
         <div></div>
       </div>
+
+      </div>
+<span class="pill">수기 · CSV · PDF</span></div>
+  <div class="panel">
+    <h2>수기 입력</h2>
+    <div class="row">
+      <div><label class="muted">단어/한자</label><input id="w" class="input" placeholder="예: 経験"></div>
+      <div><label class="muted">읽기</label><input id="r" class="input" placeholder="예: けいけん"></div>
+    </div>
+    <div class="row">
+      <div><label class="muted">뜻</label><input id="m" class="input" placeholder="예: 경험"></div>
+      <div><label class="muted">단어 분류</label>
+        <select id="l" class="select">
+          <option value="N5">N5</option><option value="N4">N4</option>
+          <option value="N3">N3</option>
+          <option value="N2">N2</option>
+          <option value="N1">N1</option>
+        </select>
+      </div>
+    </div>
+    <label class="muted">예문 (선택)</label><input class="input" placeholder="예문을 입력하세요">
+    <div class="actions"><button class="btn primary" onclick="addWord()">저장</button></div>
+    <p class="muted">같은 단어 + 같은 읽기가 이미 있으면 중복 등록을 막습니다.</p>
+    
 
       <details style="margin-top:8px">
         <summary style="cursor:pointer;font-weight:700">자막 자동 불러오기가 안 될 때: 직접 붙여넣기</summary>
