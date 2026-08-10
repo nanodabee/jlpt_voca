@@ -183,15 +183,61 @@ textarea.input{min-height:170px;resize:vertical}
 .unrecognized-item{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:start;padding:10px 0;border-bottom:1px solid #eee}
 .unrecognized-item:last-child{border-bottom:none}
 .unrecognized-text{white-space:pre-wrap;word-break:break-word}
+
+.study-calendar-overlay{
+  position:fixed;inset:0;background:rgba(0,0,0,.42);
+  display:none;align-items:center;justify-content:center;
+  z-index:9999;padding:18px;
+}
+.study-calendar-overlay.open{display:flex}
+.study-calendar-modal{
+  width:min(92vw,620px);max-height:88vh;overflow:auto;
+  background:#fff;border-radius:18px;padding:18px;
+  box-shadow:0 20px 60px rgba(0,0,0,.25);
+}
+.study-calendar-head{
+  display:flex;justify-content:space-between;align-items:center;gap:10px;
+  margin-bottom:14px;
+}
+.study-calendar-nav{display:flex;align-items:center;gap:8px}
+.study-calendar-grid{
+  display:grid;grid-template-columns:repeat(7,1fr);gap:6px;
+}
+.study-calendar-weekday{
+  text-align:center;font-size:12px;font-weight:800;color:var(--muted);padding:6px 0;
+}
+.study-calendar-day{
+  min-height:64px;border:1px solid var(--line);border-radius:10px;
+  padding:7px;background:#fff;font-size:12px;position:relative;
+}
+.study-calendar-day.empty{border-color:transparent;background:transparent}
+.study-calendar-day.studied{background:#eef9f1;border-color:#b9e2c4}
+.study-calendar-day.today{outline:2px solid #222}
+.study-calendar-daynum{font-weight:800}
+.study-calendar-mark{
+  margin-top:6px;font-size:11px;font-weight:800;
+}
+.study-calendar-summary{
+  display:flex;flex-wrap:wrap;gap:8px;margin:10px 0 14px;
+}
+.study-calendar-chip{
+  border:1px solid var(--line);border-radius:999px;padding:6px 10px;
+  font-size:12px;font-weight:800;background:#fafafa;
+}
+@media(max-width:600px){
+  .study-calendar-day{min-height:52px;padding:5px}
+  .study-calendar-mark{font-size:10px}
+}
 </style>
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 </head>
 <body>
 
 </div>
-<div class="app">
+<div class="app" style="cursor:pointer" onclick="showPage('home')" title="단어장 메인으로 이동">
 <aside class="sidebar">
-  <div class="logo">📚 일본어 단어장<div class="sublogo">N5 · N3 · N2 · N1</div></div>
+  <div class="logo">📚 일본어 단어장<div class="sublogo">N5 · N3 · N2 · N1</div>
+<div class="muted" style="margin-top:6px;font-weight:700">N5 · N4 · N3 · N2 · N1</div></div>
   <nav class="nav">
     <button class="active" onclick="showPage('home',this)">🏠 오늘의 학습</button>
     <button onclick="showPage('words',this)">📖 전체 단어장</button>
@@ -215,7 +261,7 @@ textarea.input{min-height:170px;resize:vertical}
     <div class="card"><div class="muted">오늘의 새 단어</div><div class="stat" id="todayStudyCount">0 / 50</div><div class="progress"><div id="todayStudyProgress" style="width:0%"></div></div><div class="muted" id="todayStudyRemain">오늘 학습 0개</div></div>
     <div class="card"><div class="muted">오답 단어</div><div class="stat" id="homeWrongCount">0</div><div class="muted">학습 중 오답</div></div>
     <div class="card"><div class="muted">전체 단어</div><div class="stat" id="totalCount">0</div><div class="muted">N5 ~ N1</div></div>
-    <div class="card"><div class="muted">현재 연속 학습</div><div class="stat" id="streakStat">0일</div><div class="muted">실제 학습한 날만 인정</div></div>
+    <div class="card" onclick="openStudyCalendar()" style="cursor:pointer" title="학습 캘린더 보기"><div class="muted">현재 연속 학습</div><div class="stat" id="streakStat">0일</div><div class="muted">실제 학습한 날만 인정</div></div>
   </div>
   <div class="grid2">
     <div class="panel">
@@ -627,6 +673,124 @@ function normalizedLevel(l){
 function visibleLevel(l){
   return l==="basic"?"N5/N4 미분류":l;
 }
+
+let studyCalendarCursor=new Date();
+
+function getStudyDateSet(){
+  const set=new Set();
+
+  // Primary source: studyLog, which records actual study dates.
+  if(Array.isArray(studyLog)){
+    studyLog.forEach(x=>{
+      if(typeof x==="string"){
+        const m=x.match(/\d{4}-\d{2}-\d{2}/);
+        if(m)set.add(m[0]);
+      }else if(x&&typeof x==="object"){
+        const raw=x.date||x.day||x.studyDate||x.createdAt||x.timestamp;
+        if(raw){
+          const m=String(raw).match(/\d{4}-\d{2}-\d{2}/);
+          if(m)set.add(m[0]);
+        }
+      }
+    });
+  }
+
+  // Fallback/history source if older versions stored dates here.
+  if(Array.isArray(studiedWordHistory)){
+    studiedWordHistory.forEach(x=>{
+      if(x&&typeof x==="object"){
+        const raw=x.date||x.day||x.studyDate||x.createdAt||x.timestamp;
+        if(raw){
+          const m=String(raw).match(/\d{4}-\d{2}-\d{2}/);
+          if(m)set.add(m[0]);
+        }
+      }
+    });
+  }
+
+  return set;
+}
+
+function formatDateKey(d){
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+}
+
+function calcCurrentStudyStreak(dateSet){
+  let count=0;
+  const d=new Date();
+  d.setHours(0,0,0,0);
+
+  // If today has no study record, streak may still be alive through yesterday.
+  if(!dateSet.has(formatDateKey(d))) d.setDate(d.getDate()-1);
+
+  while(dateSet.has(formatDateKey(d))){
+    count++;
+    d.setDate(d.getDate()-1);
+  }
+  return count;
+}
+
+function openStudyCalendar(){
+  studyCalendarCursor=new Date();
+  const overlay=document.getElementById("studyCalendarOverlay");
+  if(!overlay)return;
+  overlay.classList.add("open");
+  renderStudyCalendar();
+}
+
+function closeStudyCalendar(event){
+  if(event && event.target!==document.getElementById("studyCalendarOverlay"))return;
+  document.getElementById("studyCalendarOverlay")?.classList.remove("open");
+}
+
+function moveStudyCalendar(delta){
+  studyCalendarCursor=new Date(studyCalendarCursor.getFullYear(),studyCalendarCursor.getMonth()+delta,1);
+  renderStudyCalendar();
+}
+
+function goStudyCalendarToday(){
+  studyCalendarCursor=new Date();
+  renderStudyCalendar();
+}
+
+function renderStudyCalendar(){
+  const grid=document.getElementById("studyCalendarGrid");
+  if(!grid)return;
+
+  const year=studyCalendarCursor.getFullYear();
+  const month=studyCalendarCursor.getMonth();
+  const first=new Date(year,month,1);
+  const last=new Date(year,month+1,0);
+  const dateSet=getStudyDateSet();
+
+  document.getElementById("studyCalendarTitle").textContent=`${year}년 ${month+1}월`;
+
+  const todayKey=formatDateKey(new Date());
+  let monthCount=0;
+  let cells=[];
+
+  for(let i=0;i<first.getDay();i++){
+    cells.push('<div class="study-calendar-day empty"></div>');
+  }
+
+  for(let day=1;day<=last.getDate();day++){
+    const d=new Date(year,month,day);
+    const key=formatDateKey(d);
+    const studied=dateSet.has(key);
+    if(studied)monthCount++;
+    cells.push(`
+      <div class="study-calendar-day ${studied?"studied":""} ${key===todayKey?"today":""}">
+        <div class="study-calendar-daynum">${day}</div>
+        ${studied?'<div class="study-calendar-mark">학습 ✓</div>':""}
+      </div>`);
+  }
+
+  grid.innerHTML=cells.join("");
+  document.getElementById("calendarMonthStudyCount").textContent=`이번 달 ${monthCount}일 학습`;
+  document.getElementById("calendarTotalStudyCount").textContent=`누적 ${dateSet.size}일`;
+  document.getElementById("calendarStreakCount").textContent=`현재 연속 ${calcCurrentStudyStreak(dateSet)}일`;
+}
+
 function showPage(id,btn){
  document.querySelectorAll("main section").forEach(s=>s.classList.add("hidden"));
  document.getElementById(id).classList.remove("hidden");
@@ -1825,4 +1989,43 @@ async function cleanImportImage(event){
 
 setTimeout(renderUnrecognizedVault,0);
 </script>
+
+<div id="studyCalendarOverlay" class="study-calendar-overlay" onclick="closeStudyCalendar(event)">
+  <div class="study-calendar-modal" onclick="event.stopPropagation()">
+    <div class="study-calendar-head">
+      <div>
+        <h2 style="margin:0">학습 캘린더</h2>
+        <div class="muted">실제로 학습한 날짜만 표시됩니다.</div>
+      </div>
+      <button class="btn secondary" onclick="closeStudyCalendar()">닫기</button>
+    </div>
+
+    <div class="study-calendar-summary">
+      <span class="study-calendar-chip" id="calendarMonthStudyCount">이번 달 0일 학습</span>
+      <span class="study-calendar-chip" id="calendarTotalStudyCount">누적 0일</span>
+      <span class="study-calendar-chip" id="calendarStreakCount">현재 연속 0일</span>
+    </div>
+
+    <div class="study-calendar-head">
+      <div class="study-calendar-nav">
+        <button class="btn secondary" onclick="moveStudyCalendar(-1)">◀</button>
+        <b id="studyCalendarTitle"></b>
+        <button class="btn secondary" onclick="moveStudyCalendar(1)">▶</button>
+      </div>
+      <button class="btn secondary" onclick="goStudyCalendarToday()">오늘</button>
+    </div>
+
+    <div class="study-calendar-grid" id="studyCalendarWeekdays">
+      <div class="study-calendar-weekday">일</div>
+      <div class="study-calendar-weekday">월</div>
+      <div class="study-calendar-weekday">화</div>
+      <div class="study-calendar-weekday">수</div>
+      <div class="study-calendar-weekday">목</div>
+      <div class="study-calendar-weekday">금</div>
+      <div class="study-calendar-weekday">토</div>
+    </div>
+    <div class="study-calendar-grid" id="studyCalendarGrid"></div>
+  </div>
+</div>
+
 </body></html>
