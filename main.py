@@ -14,9 +14,14 @@ from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 from yt_dlp import YoutubeDL
 
+try:
+    import psycopg
+except ImportError:
+    psycopg = None
+
 APP_DIR = Path(__file__).resolve().parent
-STATIC_DIR = APP_DIR / "static"
 DB_PATH = APP_DIR / "jlpt_vocab.db"
+DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
 
 app = FastAPI(title="JLPT Vocabulary Private App")
 
@@ -31,40 +36,63 @@ class YouTubeRequest(BaseModel):
     url: str
 
 
-def db():
+def using_postgres() -> bool:
+    return bool(DATABASE_URL)
+
+
+def ensure_storage():
+    if using_postgres():
+        if psycopg is None:
+            raise RuntimeError("psycopg is required when DATABASE_URL is configured.")
+        with psycopg.connect(DATABASE_URL) as conn:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS app_state (
+                    id INTEGER PRIMARY KEY,
+                    payload JSONB NOT NULL,
+                    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                )
+            """)
+            conn.commit()
+    else:
+        conn = sqlite3.connect(DB_PATH)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS app_state (
+                id INTEGER PRIMARY KEY CHECK (id=1),
+                payload TEXT NOT NULL,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        conn.commit()
+        conn.close()
+
+
+def load_state():
+    ensure_storage()
+    if using_postgres():
+        with psycopg.connect(DATABASE_URL) as conn:
+            row = conn.execute("SELECT payload FROM app_state WHERE id=1").fetchone()
+            return row[0] if row else None
     conn = sqlite3.connect(DB_PATH)
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS app_state (
-            id INTEGER PRIMARY KEY CHECK (id=1),
-            payload TEXT NOT NULL,
-            updated_at TEXT DEFAULT CURRENT_TIMESTAMP
-        )
-    """)
-    conn.commit()
-    return conn
-
-
-
-@app.get("/")
-def index():
-    return FileResponse(STATIC_DIR / "index.html")
-
-
-
-@app.get("/api/state")
-def get_state():
-    conn = db()
     row = conn.execute("SELECT payload FROM app_state WHERE id=1").fetchone()
     conn.close()
-    if not row:
-        return {"state": None}
-    return {"state": json.loads(row[0])}
+    return json.loads(row[0]) if row else None
 
 
-@app.put("/api/state")
-def put_state(req: StateRequest):
-    payload = json.dumps(req.state, ensure_ascii=False)
-    conn = db()
+def save_state(state: dict[str, Any]):
+    ensure_storage()
+    if using_postgres():
+        payload = json.dumps(state, ensure_ascii=False)
+        with psycopg.connect(DATABASE_URL) as conn:
+            conn.execute("""
+                INSERT INTO app_state(id, payload, updated_at)
+                VALUES(1, %s::jsonb, NOW())
+                ON CONFLICT(id) DO UPDATE
+                SET payload=EXCLUDED.payload, updated_at=NOW()
+            """, (payload,))
+            conn.commit()
+        return
+    payload = json.dumps(state, ensure_ascii=False)
+    conn = sqlite3.connect(DB_PATH)
     conn.execute("""
         INSERT INTO app_state(id,payload,updated_at)
         VALUES(1,?,CURRENT_TIMESTAMP)
@@ -72,8 +100,30 @@ def put_state(req: StateRequest):
     """, (payload,))
     conn.commit()
     conn.close()
-    return {"ok": True}
 
+
+@app.get("/")
+def index():
+    return FileResponse(APP_DIR / "index.html")
+
+
+@app.get("/api/health")
+def health():
+    return {
+        "ok": True,
+        "database": "postgresql" if using_postgres() else "sqlite"
+    }
+
+
+@app.get("/api/state")
+def get_state():
+    return {"state": load_state()}
+
+
+@app.put("/api/state")
+def put_state(req: StateRequest):
+    save_state(req.state)
+    return {"ok": True}
 
 def choose_subtitle(info: dict[str, Any]) -> tuple[str, dict[str, Any], str]:
     manual = info.get("subtitles") or {}

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>JLPT 일본어 단어장</title>
+<title>JLPT 일본어 단어장 · Cloud</title>
 <style>
 :root{
   --bg:#f7f8fb;--card:#fff;--text:#20242d;--muted:#727887;--line:#e6e8ee;
@@ -855,7 +855,7 @@ async function saveAppState(){
   try{
     await api("/api/state",{method:"PUT",body:JSON.stringify({state:getAppState()})});
     const el=document.getElementById("saveStatus");
-    if(el)el.textContent="서버 저장 완료 · "+new Date().toLocaleString();
+    if(el)el.textContent="클라우드 저장 완료 · "+new Date().toLocaleString();
   }catch(e){
     const el=document.getElementById("saveStatus");
     if(el)el.textContent="서버 저장 실패: "+e.message;
