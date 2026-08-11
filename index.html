@@ -604,7 +604,7 @@ function renderTodayWords(){
   if(!box) return;
   const candidates=words.filter(x=>selectedStudyLevels.includes(normalizedLevel(x[3])));
   const sample=candidates.slice(0,5);
-  box.innerHTML=sample.map(x=>`<div class="word"><div><div class="jp-line"><div class="jp">${x[0]}</div><button class="speak" onclick="speakJapanese('${x[0]}')" title="발음 듣기">🔊</button></div><div class="reading">${x[1]}</div><div class="meaning">${x[2]}</div></div><span class="badge">${visibleLevel(x[3])}</span></div>`).join("") || "<p class='muted'>선택된 레벨에 해당하는 단어가 없습니다.</p>";
+  box.innerHTML=sample.map(x=>`<div class="word"><div><div class="jp-line"><div class="jp">${x[0]}</div><button class="speak" onclick="speakJapanese('${x[0]}','${x[1]}')" title="발음 듣기">🔊</button></div><div class="reading">${x[1]}</div><div class="meaning">${x[2]}</div></div><span class="badge">${visibleLevel(x[3])}</span></div>`).join("") || "<p class='muted'>선택된 레벨에 해당하는 단어가 없습니다.</p>";
 }
 
 
@@ -863,7 +863,7 @@ function renderWords(){
      <div class="manage-row" style="flex:1">
        <input type="checkbox" class="check wordCheck" data-index="${i}">
        <div style="flex:1">
-         <div class="jp-line"><div class="jp">${x[0]}</div><button class="speak" onclick="speakJapanese('${x[0]}')" title="발음 듣기">🔊</button></div>
+         <div class="jp-line"><div class="jp">${x[0]}</div><button class="speak" onclick="speakJapanese('${x[0]}','${x[1]}')" title="발음 듣기">🔊</button></div>
          <div class="reading">${x[1]}</div><div class="meaning">${x[2]}</div>
        </div>
      </div>
@@ -1650,7 +1650,7 @@ function revealQuizAnswer(){
  document.getElementById("quizAnswerArea").classList.remove("hidden");
 }
 function speakCurrentQuiz(){
- if(testQueue[testIndex])speakJapanese(testQueue[testIndex][0]);
+ if(testQueue[testIndex])speakJapanese(testQueue[testIndex][0],testQueue[testIndex][1]);
 }
 function gradeCurrentQuiz(ok){
  markStudyToday();
@@ -1710,7 +1710,7 @@ function renderHomeWrongReview(){
   box.innerHTML=`<div class="rounds">${roundHtml}</div>
     <div class="word">
       <div>
-        <div class="jp-line"><div class="jp">${x.word}</div><button class="speak" onclick="speakJapanese('${x.word}')" title="발음 듣기">🔊</button></div>
+        <div class="jp-line"><div class="jp">${x.word}</div><button class="speak" onclick="speakJapanese('${x.word}','${x.reading}')" title="발음 듣기">🔊</button></div>
         <div class="reading">${x.reading}</div>
         <div class="meaning">${x.meaning}</div>
       </div>
@@ -1731,7 +1731,7 @@ function renderWrongList(){
       `<span class="status-study">오늘 ${rounds}/5회독 · 정답 ${correct}회</span>`;
    
    let answerBlock = x.status==="study" && rounds<5
-     ? `<div id="wrongAnswer${realIndex}" class="answer-reveal hidden" style="text-align:left"><div class="answer-reading">${x.reading} <button class="speak" onclick="speakJapanese('${x.word}')" title="발음 듣기">🔊</button></div><div class="answer-meaning">${x.meaning}</div><div class="actions"><button class="btn secondary" onclick="reviewWrong(${realIndex},false)">몰랐어요 / 틀렸어요</button><button class="btn primary" onclick="reviewWrong(${realIndex},true)">알았어요</button></div></div><div class="actions"><button id="wrongReveal${realIndex}" class="btn primary" onclick="revealWrong(${realIndex})">정답 확인</button></div>`
+     ? `<div id="wrongAnswer${realIndex}" class="answer-reveal hidden" style="text-align:left"><div class="answer-reading">${x.reading} <button class="speak" onclick="speakJapanese('${x.word}','${x.reading}')" title="발음 듣기">🔊</button></div><div class="answer-meaning">${x.meaning}</div><div class="actions"><button class="btn secondary" onclick="reviewWrong(${realIndex},false)">몰랐어요 / 틀렸어요</button><button class="btn primary" onclick="reviewWrong(${realIndex},true)">알았어요</button></div></div><div class="actions"><button id="wrongReveal${realIndex}" class="btn primary" onclick="revealWrong(${realIndex})">정답 확인</button></div>`
      : `<div class="reading">${x.reading}</div><div class="meaning">${x.meaning}</div>`;
    return `<div class="word" style="align-items:flex-start"><div style="flex:1"><div class="jp">${x.word}</div>
      ${answerBlock}
@@ -1783,8 +1783,8 @@ function saveSettings(){
 const pollyAudioCache=new Map();
 let currentPollyAudio=null;
 
-async function speakJapanese(text){
- const value=String(text||"").trim();
+async function speakJapanese(text,reading=""){
+ const value=String(reading||text||"").trim();
  if(!value)return toast("발음할 단어가 없습니다.");
 
  try{

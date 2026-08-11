@@ -139,8 +139,8 @@ def put_state(req: StateRequest):
 
 
 POLLY_REGION = os.environ.get("AWS_DEFAULT_REGION", "us-west-2").strip() or "us-west-2"
-POLLY_VOICE_ID = "Kazuha"
-POLLY_ENGINE = "neural"
+POLLY_VOICE_ID = "Mizuki"
+POLLY_ENGINE = "standard"
 
 
 @app.post("/api/speech")
