@@ -143,24 +143,43 @@ POLLY_REGION = os.environ.get("AWS_DEFAULT_REGION", "us-west-2").strip() or "us-
 POLLY_VOICE_ID = "Kazuha"
 POLLY_ENGINE = "neural"
 
-# Kanjium pitch-accent SAMPLE.
-# Key: (written form, reading), value: accent number (downstep mora; 0 = heiban).
-# This is intentionally limited to a few words for listening comparison first.
-KANJIUM_PITCH_SAMPLE = {
-    ("いくら", "いくら"): 1,
-    ("幾ら", "いくら"): 1,
-    ("間", "あいだ"): 0,
-    ("間", "あわい"): 0,
-    ("間", "かん"): 1,
-    ("間", "けん"): 1,
-    ("間", "ま"): 0,
-    ("家", "いえ"): 2,
-    ("家", "うち"): 0,
-    ("家", "や"): 1,
-    ("明日", "あした"): 3,
-    ("明日", "あす"): 2,
-    ("明日", "みょうにち"): 1,
-}
+# Kanjium full pitch-accent dictionary (accents.txt, CC BY-SA 4.0).
+# Loaded once when the server starts. Keys are (written form, reading).
+# Values can contain more than one accepted accent pattern.
+ACCENTS_FILE = Path(__file__).with_name("accents.txt")
+
+
+def parse_accent_numbers(raw: str) -> list[int]:
+    """Extract accent numbers from Kanjium's simple and POS-tagged fields."""
+    nums = []
+    for token in re.findall(r"(?<!\d)(\d+)(?!\d)", raw or ""):
+        n = int(token)
+        if n not in nums:
+            nums.append(n)
+    return nums
+
+
+def load_kanjium_pitch(path: Path) -> dict[tuple[str, str], list[int]]:
+    data: dict[tuple[str, str], list[int]] = {}
+    if not path.exists():
+        return data
+    with path.open("r", encoding="utf-8-sig") as f:
+        for line in f:
+            parts = line.rstrip("\n\r").split("\t")
+            if len(parts) != 3:
+                continue
+            word, reading, raw_accent = (p.strip() for p in parts)
+            if not word:
+                continue
+            # Some kana headwords have a blank reading in Kanjium.
+            reading = reading or word
+            accents = parse_accent_numbers(raw_accent)
+            if accents:
+                data[(word, reading)] = accents
+    return data
+
+
+KANJIUM_PITCH = load_kanjium_pitch(ACCENTS_FILE)
 
 _SMALL_KANA = set("ゃゅょぁぃぅぇぉゎャュョァィゥェォヮヵヶ")
 _HIRA_START = ord("ぁ")
@@ -180,11 +199,8 @@ def hiragana_to_katakana(text: str) -> str:
 
 
 def split_mora(kana: str) -> list[str]:
-    """Basic Japanese mora segmentation sufficient for Pronunciation Kana."""
     moras: list[str] = []
     for ch in kana:
-        # Small yoon/vowel kana attach to the preceding mora.
-        # Small tsu (っ/ッ), long mark ー, and ん/ン remain independent mora.
         if ch in _SMALL_KANA and moras:
             moras[-1] += ch
         else:
@@ -195,12 +211,21 @@ def split_mora(kana: str) -> list[str]:
 def make_pron_kana(reading: str, accent: int) -> str:
     kata = hiragana_to_katakana(reading)
     moras = split_mora(kata)
-    if accent <= 0:
+    if accent <= 0 or accent > len(moras):
         return "".join(moras)
-    if accent > len(moras):
-        return "".join(moras)
-    # Kanjium's number marks the mora after which the downstep occurs.
     return "".join(moras[:accent]) + "'" + "".join(moras[accent:])
+
+
+def lookup_pitch(word: str, reading: str) -> int | None:
+    """Prefer an exact word+reading match. Kana-only entries also try the reading as headword."""
+    accents = KANJIUM_PITCH.get((word, reading))
+    if not accents and word == reading:
+        accents = KANJIUM_PITCH.get((reading, reading))
+    if not accents:
+        return None
+    # Kanjium occasionally lists multiple accepted patterns. Polly needs one,
+    # so use the first listed/default pattern and keep the others in the source data.
+    return accents[0]
 
 
 @app.post("/api/speech")
@@ -212,10 +237,7 @@ def synthesize_speech(req: SpeechRequest):
     if len(reading) > 300:
         raise HTTPException(status_code=422, detail="한 번에 발음할 텍스트가 너무 깁니다.")
 
-    accent = KANJIUM_PITCH_SAMPLE.get((word, reading))
-    if accent is None and word == reading:
-        # Kana-only surface forms such as いくら.
-        accent = KANJIUM_PITCH_SAMPLE.get((reading, reading))
+    accent = lookup_pitch(word, reading)
 
     if accent is not None:
         pron = make_pron_kana(reading, accent)
