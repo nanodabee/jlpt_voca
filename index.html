@@ -1035,6 +1035,25 @@ function renderLevelCounts(){
 
 const WORDS_PER_PAGE=20;
 let wordPage=1;
+function getWordPageWindow(current,total){
+ const pages=[];
+ if(total<=7){for(let i=1;i<=total;i++)pages.push(i);return pages;}
+ const add=x=>{if(x>=1&&x<=total&&!pages.includes(x))pages.push(x);};
+ add(1);
+ add(current-2);add(current-1);add(current);add(current+1);add(current+2);
+ add(total);
+ pages.sort((a,b)=>a-b);
+ return pages;
+}
+function gotoWordPageFromInput(){
+ const input=document.getElementById("wordPageInput");
+ if(!input)return;
+ const total=Math.max(1,Math.ceil((window._currentWordFilteredCount||0)/WORDS_PER_PAGE));
+ let n=parseInt(input.value||"",10);
+ if(!Number.isFinite(n))return toast("이동할 페이지 번호를 입력해주세요.");
+ n=Math.max(1,Math.min(total,n));
+ changeWordPage(n);
+}
 function changeWordPage(page){
  wordPage=page; renderWords();
  document.getElementById("wordList")?.scrollIntoView({behavior:"smooth",block:"start"});
@@ -1085,11 +1104,30 @@ function renderWords(){
    pager.style.cssText="justify-content:center;align-items:center;margin-top:16px;flex-wrap:wrap";
    document.getElementById("wordList").insertAdjacentElement("afterend",pager);
  }
- pager.innerHTML=list.length>WORDS_PER_PAGE
-   ? `<button class="btn secondary" ${wordPage<=1?"disabled":""} onclick="changeWordPage(${wordPage-1})">이전</button>
-      <span class="muted" style="min-width:110px;text-align:center">${wordPage} / ${totalPages} 페이지</span>
-      <button class="btn secondary" ${wordPage>=totalPages?"disabled":""} onclick="changeWordPage(${wordPage+1})">다음</button>`
-   : "";
+ window._currentWordFilteredCount=list.length;
+ if(list.length>WORDS_PER_PAGE){
+   const pages=getWordPageWindow(wordPage,totalPages);
+   let pageButtons="";
+   let prev=null;
+   for(const n of pages){
+     if(prev!==null && n-prev>1)pageButtons+=`<span class="muted" style="padding:0 2px">…</span>`;
+     pageButtons+=`<button class="smallbtn ${n===wordPage?"active":""}" style="${n===wordPage?"font-weight:900;border-color:var(--dark);":""}" onclick="changeWordPage(${n})">${n}</button>`;
+     prev=n;
+   }
+   pager.innerHTML=`
+     <button class="btn secondary" ${wordPage<=1?"disabled":""} onclick="changeWordPage(1)">처음</button>
+     <button class="btn secondary" ${wordPage<=1?"disabled":""} onclick="changeWordPage(${wordPage-1})">이전</button>
+     <div class="inline-actions" style="align-items:center">${pageButtons}</div>
+     <button class="btn secondary" ${wordPage>=totalPages?"disabled":""} onclick="changeWordPage(${wordPage+1})">다음</button>
+     <button class="btn secondary" ${wordPage>=totalPages?"disabled":""} onclick="changeWordPage(${totalPages})">마지막</button>
+     <span class="muted" style="margin-left:6px">${wordPage} / ${totalPages} 페이지</span>
+     <div class="inline-actions" style="align-items:center;margin-left:6px">
+       <input id="wordPageInput" type="number" min="1" max="${totalPages}" placeholder="페이지" class="input" style="width:88px;padding:8px 10px" onkeydown="if(event.key==='Enter')gotoWordPageFromInput()">
+       <button class="smallbtn" onclick="gotoWordPageFromInput()">이동</button>
+     </div>`;
+ }else{
+   pager.innerHTML="";
+ }
 }
 
 function toggleSelectAll(){
