@@ -1,0 +1,9 @@
+Third-party data notice
+
+Kanjium pitch accent data (accents.txt)
+Source: https://github.com/mifunetoshiro/kanjium
+License: Creative Commons Attribution-ShareAlike 4.0 International (CC BY-SA 4.0)
+License text: https://creativecommons.org/licenses/by-sa/4.0/legalcode
+
+Attribution requested by Kanjium:
+The pitch accent notation, verb particle data, phonetics, homonyms and other additions or modifications to EDICT, KANJIDIC or KRADFILE were provided by Uros O. through his free database.

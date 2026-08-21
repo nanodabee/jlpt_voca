@@ -1,0 +1,7 @@
+fastapi>=0.116,<1
+uvicorn[standard]>=0.35,<1
+yt-dlp>=2026.7.0
+psycopg[binary]>=3.2,<4
+pypdf>=5.9,<7
+python-multipart>=0.0.20,<1
+boto3>=1.40,<2
